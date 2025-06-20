@@ -1,0 +1,46 @@
+---
+name: "Gitea Action Pull Request"
+description: Creates a pull request on your gitea instance.
+inputs:
+  token:
+    description: Personal access token to the Gitea instance. Required permission (issue(read) repository(read-write) user(read))
+    required: true
+  base:
+    description: >
+      The pull request base branch.
+      Defaults to the branch checked out in the workflow.
+    default: 'main'
+
+runs:
+  using: composite
+  steps:
+    - name: Login To Gitea 
+      env:
+        LOGIN_SECRET: ${{ inputs.token }}
+      shell: bash
+      run: |
+        echo "Logging into gitea instance under following url: $GITHUB_SERVER_URL"
+        tea login add -u $GITHUB_SERVER_URL -t $LOGIN_SECRET
+    - name: Check for existing PR from ${{ github.ref_name }} to ${{inputs.base}}
+      continue-on-error: true
+      id: exist-pr
+      shell: bash
+      run: |
+        echo "Checking for existing PR from ${{ github.ref_name }} to ${{inputs.base}}"
+        if tea pr -f head -o simple --repo $GITHUB_REPOSITORY | grep -q ${{ github.ref_name }}; then 
+          echo "Found an existing PR. Skipping creation."
+          exit 1
+        else
+          echo "Didn't find a matching pr."
+          exit 0
+        fi          
+    - name: Create Pull Request
+      if: steps.exist-pr.outcome == 'success'
+      shell: bash
+      run: |
+        tea pr create --head "${{ github.ref_name  }}" --base ${{inputs.base}} --title "[CI] Automatic Pull Request: ${{ github.ref_name  }} into ${{ inputs.base }}"          
+    - name: No Pull Request required
+      if: steps.exist-pr.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "No Pullrequest required"  
